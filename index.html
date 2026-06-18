@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attendance Scanner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#EEF1F2; --surface:#FFFFFF; --surface-2:#F6F8F9;
+    --ink:#1A2327; --muted:#66757B; --line:#D6DDDF;
+    --accent:#0E7C66; --accent-soft:#E2F1ED;
+    --new:#C2410C; --new-soft:#FBEAE1;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:880px;margin:0 auto;padding:20px 18px 56px}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  h1{font-size:20px;letter-spacing:-.02em;margin:0;font-weight:650}
+  h1 .dot{color:var(--accent)}
+  .sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+  .tabs{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+  .tabs button{
+    font:inherit;font-size:14px;font-weight:550;border:0;background:transparent;color:var(--muted);
+    padding:7px 16px;border-radius:7px;cursor:pointer
+  }
+  .tabs button[aria-selected="true"]{background:var(--accent);color:#fff}
+  .panel{display:none}
+  .panel.active{display:block}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px;font-weight:600}
+  label{display:block;font-size:13px;color:var(--muted);margin:0 0 5px}
+  input[type=text],textarea{
+    width:100%;font:inherit;font-size:15px;color:var(--ink);background:var(--surface-2);
+    border:1px solid var(--line);border-radius:8px;padding:9px 11px
+  }
+  textarea{min-height:84px;resize:vertical;font-family:var(--mono);font-size:13px}
+  input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+  .row{display:flex;gap:8px;align-items:flex-end}
+  .row > div{flex:1}
+  button.act{
+    font:inherit;font-size:14px;font-weight:600;border:0;border-radius:8px;cursor:pointer;
+    padding:9px 16px;background:var(--accent);color:#fff;white-space:nowrap
+  }
+  button.act.ghost{background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
+  button.act.ghost:hover{background:#eef1f2}
+  button.act:disabled{opacity:.4;cursor:not-allowed}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+
+  /* roster table */
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:9px 8px;border-bottom:1px solid var(--surface-2)}
+  td.tok{font-family:var(--mono);font-size:13px;color:var(--muted)}
+  td.cnt{font-family:var(--mono);font-weight:600;text-align:right;width:48px}
+  td.act-cell{width:40px;text-align:right}
+  .linkbtn{border:0;background:none;color:var(--accent);font:inherit;font-size:13px;cursor:pointer;padding:2px 4px}
+  .empty{color:var(--muted);font-size:14px;padding:14px 8px}
+
+  /* scan */
+  #reader{width:100%;max-width:380px;margin:0 auto;border-radius:12px;overflow:hidden;background:#000}
+  .feedback{
+    margin:14px 0 0;border-radius:12px;padding:16px 18px;border:1px solid var(--line);
+    background:var(--surface-2);min-height:74px;display:flex;align-items:center;gap:14px;transition:background .15s
+  }
+  .feedback.ok{background:var(--accent-soft);border-color:#bfe3da}
+  .feedback.new{background:var(--new-soft);border-color:#f1cdbb}
+  .feedback .mark{font-size:30px;line-height:1;width:34px;text-align:center}
+  .feedback .who{font-size:17px;font-weight:650}
+  .feedback .meta{font-size:12.5px;color:var(--muted);font-family:var(--mono);margin-top:1px}
+  .tick{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--muted);text-align:right}
+  .tick b{display:block;font-size:26px;color:var(--accent);font-weight:650}
+  .session-list{margin-top:14px;max-height:240px;overflow:auto}
+  .session-list .li{display:flex;justify-content:space-between;font-size:13px;padding:6px 2px;border-bottom:1px solid var(--surface-2)}
+  .session-list .li .t{font-family:var(--mono);color:var(--muted)}
+
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .pill{font-family:var(--mono);font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:20px;padding:4px 11px}
+  .warn{font-size:12.5px;color:var(--new);background:var(--new-soft);border:1px solid #f1cdbb;border-radius:8px;padding:9px 12px;margin-top:4px}
+  .ok-note{font-size:12.5px;color:var(--accent);background:var(--accent-soft);border:1px solid #bfe3da;border-radius:8px;padding:9px 12px;margin-top:4px}
+  .banner{background:var(--accent-soft);border:1px solid #bfe3da;border-radius:10px;padding:11px 14px;margin-bottom:16px;font-size:13.5px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .banner b{font-weight:650}
+  .saved{font-family:var(--mono);font-size:12px;color:var(--accent)}
+  .saved.idle{color:var(--muted)}
+  .linkrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 4px;padding-top:12px;border-top:1px solid var(--surface-2)}
+  select{font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink)}
+  .fsa-only{display:none}
+  footer{color:var(--muted);font-size:12px;margin-top:8px;line-height:1.6}
+  .file-hidden{display:none}
+
+  /* inline new-person prompt */
+  .prompt{margin-top:14px;border:1px dashed var(--new);border-radius:10px;padding:14px;background:var(--new-soft)}
+  .prompt p{margin:0 0 9px;font-size:14px}
+  .prompt .tok{font-family:var(--mono)}
+
+  /* print sheet of codes */
+  #printArea{display:none}
+  @media print{
+    body *{visibility:hidden}
+    #printArea,#printArea *{visibility:visible}
+    #printArea{display:block;position:absolute;left:0;top:0;width:100%}
+    .pcard{display:inline-flex;flex-direction:column;align-items:center;width:170px;height:210px;
+      border:1px solid #ccc;border-radius:8px;margin:6px;padding:10px;page-break-inside:avoid;vertical-align:top}
+    .pcard .pname{font-weight:650;font-size:14px;margin-top:8px;text-align:center}
+    .pcard .ptok{font-family:var(--mono);font-size:11px;color:#666;margin-top:2px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Attendance Scanner<span class="dot">.</span></h1>
+      <p class="sub">Personal codes scanned at the door. Everything stays in this browser.</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="roster">Roster &amp; codes</button>
+      <button role="tab" aria-selected="false" data-tab="scan">Scan</button>
+    </div>
+  </header>
+
+  <div class="banner" id="restoreBanner" style="display:none"></div>
+
+  <!-- ============ ROSTER ============ -->
+  <section class="panel active" id="panel-roster">
+    <div class="card">
+      <h2>Add people</h2>
+      <div class="row">
+        <div>
+          <label for="nameIn">Name</label>
+          <input type="text" id="nameIn" placeholder="e.g. Jordan Wei" autocomplete="off">
+        </div>
+        <button class="act" id="addOne">Add &amp; make code</button>
+      </div>
+      <div style="margin-top:14px">
+        <label for="bulkIn">Or paste several names (one per line)</label>
+        <textarea id="bulkIn" placeholder="Ada Lovelace&#10;Rosalind Franklin&#10;Carl Woese"></textarea>
+        <div style="margin-top:8px"><button class="act ghost" id="addBulk">Add all</button></div>
+      </div>
+      <p class="hint">Each person gets a random token like <code>k7f3qa</code>. The token is what the QR holds — never the name. Only this spreadsheet links the two.</p>
+    </div>
+
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between;margin-bottom:6px">
+        <h2 style="margin:0">Roster <span class="pill" id="countPill">0 people</span></h2>
+        <div class="toolbar">
+          <button class="act ghost" id="importBtn">Import CSV</button>
+          <button class="act ghost" id="printBtn">Print all codes</button>
+          <button class="act" id="exportRoster">Export roster CSV</button>
+        </div>
+      </div>
+      <input type="file" id="importFile" accept=".csv,text/csv" class="file-hidden">
+      <div id="rosterTableWrap">
+        <div class="empty" id="rosterEmpty">No one yet. Add a name above, or import a roster CSV.</div>
+        <table id="rosterTable" style="display:none">
+          <thead><tr><th>Name</th><th>Token</th><th style="text-align:right">Scans</th><th></th></tr></thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCAN ============ -->
+  <section class="panel" id="panel-scan">
+    <div class="card">
+      <h2>This session</h2>
+      <div class="row">
+        <div><label for="sessLabel">Session label</label><input type="text" id="sessLabel" placeholder="e.g. 2026-06-18 Seminar 12" autocomplete="off"></div>
+        <div><label for="orgName">Organizer (you)</label><input type="text" id="orgName" placeholder="e.g. Anna" autocomplete="off"></div>
+      </div>
+      <div class="linkrow" style="border-top:none;padding-top:12px">
+        <label style="margin:0" for="scanMode">On scan</label>
+        <select id="scanMode">
+          <option value="tokens">Log token only — no names on this device</option>
+          <option value="names">Show name — roster imported here</option>
+        </select>
+        <label style="margin:0;margin-left:6px" for="fileFmt">File</label>
+        <select id="fileFmt"><option value="csv">CSV</option><option value="tsv">TSV</option></select>
+      </div>
+      <p class="hint">Token-only is the default for organizers: you just record which codes were scanned, and names are matched later by whoever holds the master roster. Set a session label and your name so every exported file is self-identifying.</p>
+    </div>
+
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between">
+        <h2 style="margin:0">Live scan</h2>
+        <div class="toolbar">
+          <span class="pill" id="sessionPill">0 scans this session</span>
+          <button class="act ghost" id="stopBtn" disabled>Pause</button>
+          <button class="act" id="startBtn">Start camera</button>
+        </div>
+      </div>
+      <div id="reader" style="margin-top:14px"></div>
+
+      <div class="feedback" id="feedback">
+        <div class="mark" id="fbMark">·</div>
+        <div>
+          <div class="who" id="fbWho">Point the camera at a personal code</div>
+          <div class="meta" id="fbMeta">Each scan is recorded with a timestamp. Set the session and your name above first.</div>
+        </div>
+        <div class="tick" id="fbTick" style="display:none"><b id="fbCount">0</b>total scans</div>
+      </div>
+
+      <div id="promptHost"></div>
+
+      <div class="session-list" id="sessionList"></div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar" style="justify-content:space-between">
+        <h2 style="margin:0">Save your data</h2>
+        <div class="toolbar">
+          <button class="act ghost" id="exportLog">Export scan log CSV</button>
+          <button class="act" id="exportRoster2">Export roster CSV</button>
+        </div>
+      </div>
+      <div class="ok-note">Auto-saving every scan into this browser. <span class="saved idle" id="savedStatus">nothing saved yet</span></div>
+
+      <div class="linkrow fsa-only" id="linkRow">
+        <button class="act ghost" id="linkFile">Link a file for live save</button>
+        <span style="font-size:12.5px;color:var(--muted)">writes continuously, as</span>
+        <select id="liveFormat">
+          <option value="counts">counts per person</option>
+          <option value="log">list of scans</option>
+        </select>
+        <span class="saved idle" id="linkStatus">not linked</span>
+      </div>
+
+      <div class="linkrow" style="justify-content:space-between">
+        <span style="font-size:12.5px;color:var(--muted)" id="phoneNote">On a phone, the browser can't write to a file on its own — your scans are kept safe in the browser above; tap Export when you're done.</span>
+        <button class="linkbtn" id="clearAll" style="color:var(--new)">Clear all data</button>
+      </div>
+    </div>
+
+  </section>
+
+  <footer>
+    Runs entirely in your browser. Attendance data is never uploaded; the only network requests are to load the two QR libraries (which you can vendor locally for a fully offline copy). For the camera, open this file over <code>https://</code> or <code>http://localhost</code> — browsers block the camera on bare <code>file://</code>.
+  </footer>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- state (in memory only) ----------
+  // roster: token -> { name, count, first, last }
+  const roster = new Map();
+  const sessionLog = []; // {token, name, ts}
+  const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // no ambiguous chars
+  const recentScan = new Map(); // token -> timestamp, for debounce
+
+  // ---------- helpers ----------
+  const $ = id => document.getElementById(id);
+  function token(){
+    let t;
+    do { t = Array.from({length:6}, () => ALPHABET[Math.floor(Math.random()*ALPHABET.length)]).join(""); }
+    while (roster.has(t));
+    return t;
+  }
+  function nowISO(){ return new Date().toISOString(); }
+  function fmtTime(iso){ const d=new Date(iso); return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"}); }
+
+  function addPerson(name){
+    name = (name||"").trim();
+    if(!name) return null;
+    const t = token();
+    roster.set(t, { name, count:0, first:null, last:null });
+    return t;
+  }
+
+  function renderRoster(){
+    const body = $("rosterBody");
+    body.innerHTML = "";
+    const entries = [...roster.entries()];
+    $("countPill").textContent = entries.length + (entries.length===1?" person":" people");
+    $("rosterTable").style.display = entries.length ? "table" : "none";
+    $("rosterEmpty").style.display = entries.length ? "none" : "block";
+    for(const [t, p] of entries){
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        '<td>'+escapeHtml(p.name)+'</td>'+
+        '<td class="tok">'+t+'</td>'+
+        '<td class="cnt">'+p.count+'</td>'+
+        '<td class="act-cell"><button class="linkbtn" data-qr="'+t+'">QR</button></td>';
+      body.appendChild(tr);
+    }
+    body.querySelectorAll("[data-qr]").forEach(b=>{
+      b.addEventListener("click", ()=> showSingleQR(b.getAttribute("data-qr")));
+    });
+  }
+
+  function escapeHtml(s){ return s.replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+  // ---------- QR generation ----------
+  function makeQRCanvas(text, size){
+    const holder = document.createElement("div");
+    if(typeof QRCode === "undefined"){ holder.textContent="[QR lib not loaded]"; return holder; }
+    new QRCode(holder, { text, width:size, height:size, correctLevel: QRCode.CorrectLevel.M });
+    return holder;
+  }
+
+  function showSingleQR(t){
+    const p = roster.get(t); if(!p) return;
+    const w = window.open("", "_blank", "width=320,height=420");
+    w.document.write('<title>'+escapeHtml(p.name)+'</title><body style="font-family:system-ui;text-align:center;padding:24px">');
+    w.document.write('<div id="q"></div><div style="font-weight:650;margin-top:12px">'+escapeHtml(p.name)+'</div><div style="font-family:monospace;color:#666">'+t+'</div>');
+    w.document.write('<scr'+'ipt src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></scr'+'ipt>');
+    w.document.write('<scr'+'ipt>window.onload=function(){new QRCode(document.getElementById("q"),{text:"'+t+'",width:220,height:220});}<\/scr'+'ipt>');
+    w.document.write('</body>');
+    w.document.close();
+  }
+
+  function buildPrintSheet(){
+    const area = $("printArea");
+    area.innerHTML = "";
+    for(const [t,p] of roster){
+      const card = document.createElement("div");
+      card.className = "pcard";
+      const q = makeQRCanvas(t, 130);
+      card.appendChild(q);
+      const n = document.createElement("div"); n.className="pname"; n.textContent=p.name; card.appendChild(n);
+      const tk = document.createElement("div"); tk.className="ptok"; tk.textContent=t; card.appendChild(tk);
+      area.appendChild(card);
+    }
+  }
+
+  // ---------- CSV / TSV ----------
+  function delim(){ return ($("fileFmt") && $("fileFmt").value==="tsv") ? "\t" : ","; }
+  function ext(){ return ($("fileFmt") && $("fileFmt").value==="tsv") ? "tsv" : "csv"; }
+  function cell(v, d){
+    v = String(v==null?"":v);
+    if(d==="\t") return v.replace(/[\t\n\r]+/g," ");          // TSV: no quoting, strip tabs/newlines
+    return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; // CSV: RFC-style quoting
+  }
+  function csvCell(v){ return cell(v, ","); } // kept for compatibility
+  function sessLabel(){ return $("sessLabel") ? $("sessLabel").value.trim() : ""; }
+  function orgName(){ return $("orgName") ? $("orgName").value.trim() : ""; }
+  function download(filename, text){
+    const blob = new Blob([text], {type:"text/csv;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  }
+  function rosterCSVString(){
+    const d=delim(), S=sessLabel(), O=orgName();
+    let out = ["session","organizer","token","name","scans","first_seen","last_seen"].join(d)+"\n";
+    for(const [t,p] of roster){
+      out += [S,O,t,p.name,p.count,p.first||"",p.last||""].map(v=>cell(v,d)).join(d)+"\n";
+    }
+    return out;
+  }
+  function logCSVString(){
+    const d=delim(), S=sessLabel(), O=orgName();
+    let out = ["session","organizer","timestamp","token","name"].join(d)+"\n";
+    for(let i=sessionLog.length-1;i>=0;i--){ const e=sessionLog[i];
+      out += [S,O,e.ts,e.token,e.name].map(v=>cell(v,d)).join(d)+"\n"; }
+    return out;
+  }
+  function fnsafe(s){ return (s||"").replace(/[^a-z0-9_-]+/gi,"-").replace(/^-+|-+$/g,"").slice(0,40); }
+  function exportRoster(){
+    const parts=["attendance",fnsafe(sessLabel()),fnsafe(orgName()),stamp()].filter(Boolean);
+    download(parts.join("_")+"."+ext(), rosterCSVString());
+  }
+  function exportLog(){
+    const parts=["scans",fnsafe(sessLabel()),fnsafe(orgName()),stamp()].filter(Boolean);
+    download(parts.join("_")+"."+ext(), logCSVString());
+  }
+  function stamp(){ return new Date().toISOString().slice(0,16).replace(/[:T]/g,"-"); }
+
+  // minimal CSV parser (handles quotes, commas, newlines)
+  function parseCSV(text){
+    const rows=[]; let row=[], cur="", q=false;
+    for(let i=0;i<text.length;i++){
+      const c=text[i];
+      if(q){
+        if(c==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; }
+        else cur+=c;
+      } else {
+        if(c==='"') q=true;
+        else if(c===',') { row.push(cur); cur=""; }
+        else if(c==='\n'){ row.push(cur); rows.push(row); row=[]; cur=""; }
+        else if(c==='\r'){ /* skip */ }
+        else cur+=c;
+      }
+    }
+    if(cur.length||row.length){ row.push(cur); rows.push(row); }
+    return rows;
+  }
+  function parseTSV(text){
+    return text.split(/\r?\n/).map(line=> line.split("\t"));
+  }
+  function importCSV(text){
+    const firstLine = text.split(/\r?\n/)[0] || "";
+    const isTab = firstLine.indexOf("\t") > -1 && firstLine.indexOf(",") === -1;
+    const raw = isTab ? parseTSV(text) : parseCSV(text);
+    const rows = raw.filter(r=>r.length && r.some(c=>String(c).trim()!==""));
+    if(!rows.length) return;
+    let start=0;
+    const head = rows[0].map(h=>String(h).trim().toLowerCase());
+    const ti = head.indexOf("token"), ni = head.indexOf("name"), ci = head.indexOf("scans");
+    let tIdx=0, nIdx=1, cIdx=-1;
+    if(ti>-1 && ni>-1){ tIdx=ti; nIdx=ni; cIdx=ci; start=1; }
+    let added=0;
+    for(let r=start;r<rows.length;r++){
+      const row=rows[r];
+      const t=(row[tIdx]||"").trim(), n=(row[nIdx]||"").trim();
+      if(!t||!n) continue;
+      const count = cIdx>-1 ? (parseInt(row[cIdx],10)||0) : 0;
+      roster.set(t, { name:n, count, first:roster.get(t)?.first||null, last:roster.get(t)?.last||null });
+      added++;
+    }
+    renderRoster();
+    persist();
+    flash($("countPill"));
+    if(added===0) alert("No rows with token + name found. Expected columns including 'token' and 'name'.");
+  }
+  function flash(el){ el.style.transition="none"; el.style.background="var(--accent)"; el.style.color="#fff";
+    setTimeout(()=>{el.style.transition="background .4s,color .4s"; el.style.background=""; el.style.color="";},250); }
+
+  // ---------- autosave (browser storage) ----------
+  const STORE_KEY = "attendance_scanner_v1";
+  const SETTINGS_KEY = "attendance_scanner_settings_v1";
+  let storageOK = false;
+  try { localStorage.setItem("__t","1"); localStorage.removeItem("__t"); storageOK = true; } catch(e){ storageOK = false; }
+
+  function saveSettings(){
+    if(!storageOK) return;
+    try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      sess: sessLabel(), org: orgName(),
+      mode: ($("scanMode")||{}).value, fmt: ($("fileFmt")||{}).value
+    })); }catch(e){}
+  }
+  function loadSettings(){
+    if(!storageOK) return;
+    try{
+      const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)||"null"); if(!s) return;
+      if(s.sess!=null) $("sessLabel").value=s.sess;
+      if(s.org!=null) $("orgName").value=s.org;
+      if(s.mode) $("scanMode").value=s.mode;
+      if(s.fmt) $("fileFmt").value=s.fmt;
+    }catch(e){}
+  }
+
+  function persist(){
+    if(storageOK){
+      try{
+        localStorage.setItem(STORE_KEY, JSON.stringify({
+          roster:[...roster.entries()], log:sessionLog, savedAt:nowISO()
+        }));
+        markSaved(new Date());
+      }catch(e){ /* quota/other — keep running */ }
+    }
+    writeLiveFile(); // FSA, if a file is linked
+  }
+  function markSaved(d){
+    const el=$("savedStatus"); if(!el) return;
+    el.classList.remove("idle");
+    el.textContent = "saved "+d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  }
+  function restore(){
+    if(!storageOK) return null;
+    try{
+      const raw = localStorage.getItem(STORE_KEY); if(!raw) return null;
+      const data = JSON.parse(raw);
+      (data.roster||[]).forEach(([t,p])=> roster.set(t,p));
+      (data.log||[]).forEach(e=> sessionLog.push(e));
+      return data;
+    }catch(e){ return null; }
+  }
+  function clearAll(){
+    if(!confirm("Erase the roster and all scans from this browser? Export first if you want a copy.")) return;
+    roster.clear(); sessionLog.length=0; recentScan.clear();
+    if(storageOK){ try{ localStorage.removeItem(STORE_KEY); }catch(e){} }
+    $("restoreBanner").style.display="none";
+    $("sessionList").innerHTML=""; $("promptHost").innerHTML="";
+    $("savedStatus").classList.add("idle"); $("savedStatus").textContent="nothing saved yet";
+    renderRoster(); updateTick();
+    setFeedback("","Point the camera at a personal code","Each scan is recorded with a timestamp.");
+  }
+
+  // ---------- live file (File System Access API; desktop Chromium) ----------
+  let fileHandle = null;
+  const fsaSupported = ("showSaveFilePicker" in window);
+  function liveFormat(){ const s=$("liveFormat"); return s ? s.value : "counts"; }
+  async function linkFile(){
+    try{
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName:"attendance_live.csv",
+        types:[{description:"CSV", accept:{"text/csv":[".csv"]}}]
+      });
+      await writeLiveFile();
+      const ls=$("linkStatus"); ls.classList.remove("idle"); ls.textContent="linked ✓ live";
+    }catch(e){ /* user cancelled picker */ }
+  }
+  async function writeLiveFile(){
+    if(!fileHandle) return;
+    try{
+      const w = await fileHandle.createWritable();
+      await w.write(liveFormat()==="log" ? logCSVString() : rosterCSVString());
+      await w.close();
+    }catch(e){ /* permission lost etc. — browser autosave still holds the data */ }
+  }
+
+
+  document.querySelectorAll('[role=tab]').forEach(tab=>{
+    tab.addEventListener("click", ()=>{
+      document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute("aria-selected","false"));
+      tab.setAttribute("aria-selected","true");
+      const which = tab.getAttribute("data-tab");
+      $("panel-roster").classList.toggle("active", which==="roster");
+      $("panel-scan").classList.toggle("active", which==="scan");
+    });
+  });
+
+  // ---------- roster events ----------
+  $("addOne").addEventListener("click", ()=>{
+    const t = addPerson($("nameIn").value);
+    if(t){ $("nameIn").value=""; renderRoster(); persist(); showSingleQR(t); $("nameIn").focus(); }
+  });
+  $("nameIn").addEventListener("keydown", e=>{ if(e.key==="Enter") $("addOne").click(); });
+  $("addBulk").addEventListener("click", ()=>{
+    const lines = $("bulkIn").value.split("\n").map(s=>s.trim()).filter(Boolean);
+    lines.forEach(addPerson);
+    $("bulkIn").value=""; renderRoster(); persist();
+  });
+  $("exportRoster").addEventListener("click", exportRoster);
+  $("exportRoster2").addEventListener("click", exportRoster);
+  $("exportLog").addEventListener("click", exportLog);
+  $("clearAll").addEventListener("click", clearAll);
+  $("linkFile").addEventListener("click", linkFile);
+  $("liveFormat").addEventListener("change", writeLiveFile);
+  ["sessLabel","orgName","scanMode","fileFmt"].forEach(id=>{
+    const el=$(id); if(el){ el.addEventListener("input", saveSettings); el.addEventListener("change", ()=>{ saveSettings(); writeLiveFile(); }); }
+  });
+  $("printBtn").addEventListener("click", ()=>{ if(!roster.size){alert("Add people first.");return;} buildPrintSheet(); window.print(); });
+  $("importBtn").addEventListener("click", ()=> $("importFile").click());
+  $("importFile").addEventListener("change", e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const rd=new FileReader(); rd.onload=()=>importCSV(rd.result); rd.readAsText(f);
+    e.target.value="";
+  });
+
+  // ---------- scanning ----------
+  let scanner=null, scanning=false;
+  function setFeedback(kind, who, meta){
+    const fb=$("feedback");
+    fb.className = "feedback" + (kind?(" "+kind):"");
+    $("fbMark").textContent = kind==="ok"?"✓":kind==="new"?"+":"·";
+    $("fbWho").textContent = who;
+    $("fbMeta").textContent = meta;
+  }
+  function updateTick(){
+    $("fbTick").style.display = sessionLog.length?"block":"none";
+    $("fbCount").textContent = sessionLog.length;
+    $("sessionPill").textContent = sessionLog.length + (sessionLog.length===1?" scan this session":" scans this session");
+  }
+  function logScan(token, name){
+    const ts=nowISO();
+    sessionLog.unshift({token,name,ts});
+    const li=document.createElement("div"); li.className="li";
+    li.innerHTML='<span>'+escapeHtml(name||token)+'</span><span class="t">'+fmtTime(ts)+'</span>';
+    $("sessionList").prepend(li);
+    updateTick();
+  }
+  function recordKnown(t){
+    const p=roster.get(t);
+    p.count++; const ts=nowISO(); if(!p.first)p.first=ts; p.last=ts;
+    setFeedback("ok", p.name||t, t+"  ·  scan #"+p.count);
+    logScan(t, p.name);
+    renderRoster();
+    persist();
+  }
+  function recordTokenOnly(t){
+    let p = roster.get(t);
+    if(p){ p.count++; p.last=nowISO(); }
+    else { p = {name:"", count:1, first:nowISO(), last:nowISO()}; roster.set(t,p); }
+    setFeedback("ok", t, "recorded  ·  scan #"+p.count);
+    logScan(t, "");
+    renderRoster();
+    persist();
+  }
+  function promptNew(t){
+    const host=$("promptHost");
+    host.innerHTML =
+      '<div class="prompt"><p>Unknown code <span class="tok">'+t+'</span>. Who is this?</p>'+
+      '<div class="row"><div><input type="text" id="newName" placeholder="Name" autocomplete="off"></div>'+
+      '<button class="act" id="newSave">Add &amp; count</button>'+
+      '<button class="act ghost" id="newSkip">Skip</button></div></div>';
+    const ni=$("newName"); ni.focus();
+    const save=()=>{
+      const n=ni.value.trim(); if(!n){ni.focus();return;}
+      roster.set(t,{name:n,count:1,first:nowISO(),last:nowISO()});
+      setFeedback("ok", n, t+"  ·  new entry");
+      logScan(t,n); renderRoster(); persist(); host.innerHTML="";
+    };
+    $("newSave").addEventListener("click", save);
+    ni.addEventListener("keydown", e=>{ if(e.key==="Enter") save(); });
+    $("newSkip").addEventListener("click", ()=>{ host.innerHTML=""; setFeedback("", "Skipped "+t, "Scan the next code."); });
+  }
+  function onScan(decodedText){
+    const t = (decodedText||"").trim();
+    if(!t) return;
+    const last = recentScan.get(t)||0, now=Date.now();
+    if(now-last < 3000) return;          // debounce repeat reads
+    recentScan.set(t, now);
+    const mode = $("scanMode") ? $("scanMode").value : "tokens";
+    if(roster.has(t)) recordKnown(t);
+    else if(mode==="names") promptNew(t);
+    else recordTokenOnly(t);
+  }
+  function startCamera(){
+    if(typeof Html5Qrcode==="undefined"){ setFeedback("new","Scanner library didn't load","Check your connection, then reload."); return; }
+    scanner = new Html5Qrcode("reader");
+    scanner.start({facingMode:"environment"}, {fps:10, qrbox:{width:240,height:240}}, onScan, ()=>{})
+      .then(()=>{ scanning=true; $("startBtn").disabled=true; $("stopBtn").disabled=false;
+                  setFeedback("","Ready","Point the camera at a personal code."); })
+      .catch(err=>{ setFeedback("new","Camera unavailable", String(err).slice(0,80)+" — open over https or localhost."); });
+  }
+  function stopCamera(){
+    if(scanner&&scanning){ scanner.stop().then(()=>{ scanning=false; $("startBtn").disabled=false; $("stopBtn").disabled=true;
+      setFeedback("","Paused","Press Start camera to resume."); }); }
+  }
+  $("startBtn").addEventListener("click", startCamera);
+  $("stopBtn").addEventListener("click", stopCamera);
+  window.addEventListener("beforeunload", e=>{ if(!storageOK && sessionLog.length){ e.preventDefault(); e.returnValue=""; } });
+
+  // ---------- init ----------
+  loadSettings();
+  if(fsaSupported){ $("linkRow").style.display="flex"; $("phoneNote").style.display="none"; }
+
+  const restored = restore();
+  if(restored && (roster.size || sessionLog.length)){
+    const b=$("restoreBanner"); b.style.display="flex";
+    const when = restored.savedAt ? new Date(restored.savedAt).toLocaleString() : "earlier";
+    b.innerHTML = '<span>Recovered your last session — <b>'+roster.size+'</b> people, <b>'+
+      sessionLog.length+'</b> scans (saved '+when+').</span>';
+    const x=document.createElement("button"); x.className="linkbtn"; x.textContent="Start fresh";
+    x.addEventListener("click", clearAll); b.appendChild(x);
+    if(restored.savedAt) markSaved(new Date(restored.savedAt));
+    const sl=$("sessionList");
+    sessionLog.forEach(e=>{ const li=document.createElement("div"); li.className="li";
+      li.innerHTML='<span>'+escapeHtml(e.name)+'</span><span class="t">'+fmtTime(e.ts)+'</span>'; sl.appendChild(li); });
+  }
+
+  renderRoster(); updateTick();
+})();
+</script>
+</body>
+</html>
